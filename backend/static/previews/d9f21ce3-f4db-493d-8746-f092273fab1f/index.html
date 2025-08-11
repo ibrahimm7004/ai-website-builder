@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SparkDev — Automate Anything!</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <header class="site__header" role="banner">
+    <div class="container header__inner">
+      <a class="brand" href="#hero">
+        <svg class="brand__mark" width="36" height="36" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="10" fill="var(--accent)" />
+          <path d="M7 12c1.5-2 4-5 10-6" stroke="#fff" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+        </svg>
+        <span class="brand__name">SparkDev</span>
+      </a>
+
+      <button class="nav-toggle" aria-controls="primary-nav" aria-expanded="false" aria-label="Toggle navigation">
+        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+
+      <nav id="primary-nav" class="nav" role="navigation">
+        <ul class="nav__list">
+          <li><a class="nav__link" href="#hero">Home</a></li>
+          <li><a class="nav__link" href="#social-proof">Trusted</a></li>
+          <li><a class="nav__link" href="#deep-dive">Platform</a></li>
+          <li><a class="nav__link" href="#faq">FAQ</a></li>
+        </ul>
+        <div class="nav__ctas">
+          <a class="btn btn--ghost" href="#cta">Request Demo</a>
+          <a class="btn btn--primary" href="#cta">Get Started</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main class="site__main">
+    <section id="hero" class="hero" aria-labelledby="hero-title">
+      <div class="container hero__inner">
+        <div class="hero__col hero__copy">
+          <h1 id="hero-title" class="hero__title">Automate Anything!</h1>
+          <p class="hero__tag">SparkDev connects tools, teams, and tasks into elegant, reliable workflows — without friction.</p>
+          <div class="hero__actions">
+            <a class="btn btn--primary" href="#cta">Get Started</a>
+            <a class="btn btn--ghost" href="#social-proof">Request Demo</a>
+          </div>
+          <ul class="hero__list" aria-hidden="true">
+            <li>Fast integrations</li>
+            <li>Transparent logs</li>
+            <li>Enterprise-grade security</li>
+          </ul>
+        </div>
+
+        <div class="hero__col hero__visual" aria-hidden="true">
+          <svg class="visual__svg" viewBox="0 0 600 400" role="img" aria-hidden="true">
+            <defs>
+              <linearGradient id="g" x1="0" x2="1">
+                <stop offset="0" stop-color="rgba(255,140,0,0.9)"/>
+                <stop offset="1" stop-color="rgba(48,48,48,0.9)"/>
+              </linearGradient>
+            </defs>
+            <rect x="20" y="40" width="520" height="300" rx="16" fill="#222" opacity="0.9"/>
+            <g transform="translate(60,80)">
+              <rect width="440" height="220" rx="12" fill="url(#g)" opacity="0.12"/>
+              <circle cx="80" cy="60" r="36" fill="var(--accent)" />
+              <rect x="140" y="40" width="200" height="12" rx="6" fill="#fff" opacity="0.9"/>
+              <rect x="140" y="68" width="120" height="10" rx="5" fill="#fff" opacity="0.6"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <section id="social-proof" class="social" aria-labelledby="social-title">
+      <div class="container">
+        <h2 id="social-title" class="section__title">Loved by dev teams worldwide</h2>
+        <p class="section__sub">Trusted integrations and reliable uptime.</p>
+        <ul class="social__grid" aria-hidden="true">
+          <li class="logo"> <svg width="84" height="28" viewBox="0 0 84 28"><rect width="84" height="28" rx="6" fill="#2b2b2b"/></svg></li>
+          <li class="logo"> <svg width="84" height="28" viewBox="0 0 84 28"><rect width="84" height="28" rx="6" fill="#3a3a3a"/></svg></li>
+          <li class="logo"> <svg width="84" height="28" viewBox="0 0 84 28"><rect width="84" height="28" rx="6" fill="#444"/></svg></li>
+          <li class="logo"> <svg width="84" height="28" viewBox="0 0 84 28"><rect width="84" height="28" rx="6" fill="#2f2f2f"/></svg></li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="deep-dive" class="deep" aria-labelledby="deep-title">
+      <div class="container deep__inner">
+        <div class="deep__intro">
+          <h2 id="deep-title" class="section__title">Platform highlights</h2>
+          <p class="section__sub">Build workflows, connect tools, and ship automation that scales.</p>
+        </div>
+        <div class="deep__grid">
+          <article class="card">
+            <h3 class="card__title">Visual Builder</h3>
+            <p class="card__body">Drag-and-drop flows with instant previews and versioning.</p>
+          </article>
+          <article class="card">
+            <h3 class="card__title">Observability</h3>
+            <p class="card__body">Detailed logs, metrics, and rollback tools for confidence.</p>
+          </article>
+          <article class="card">
+            <h3 class="card__title">Secure by default</h3>
+            <p class="card__body">Role-based access, encrypted secrets, and audit trails.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="faq" class="faq" aria-labelledby="faq-title">
+      <div class="container">
+        <h2 id="faq-title" class="section__title">Frequently asked</h2>
+        <div class="faq__list">
+          <div class="faq__item">
+            <button class="faq__q" aria-expanded="false">How long to onboard?</button>
+            <div class="faq__a" hidden>Most teams are productive in days with our templates and guides.</div>
+          </div>
+          <div class="faq__item">
+            <button class="faq__q" aria-expanded="false">Does it integrate with X?</button>
+            <div class="faq__a" hidden>We support common APIs and webhooks. Custom connectors are available.</div>
+          </div>
+          <div class="faq__item">
+            <button class="faq__q" aria-expanded="false">What about security?</button>
+            <div class="faq__a" hidden>Encryption in transit & at rest, SOC-ready controls, and SSO options.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="cta" class="final-cta" aria-labelledby="cta-title">
+      <div class="container cta__inner">
+        <h2 id="cta-title" class="cta__title">Ready to automate?</h2>
+        <p class="cta__sub">Start a trial or request a demo — move faster with SparkDev.</p>
+        <div class="cta__actions">
+          <a class="btn btn--primary btn--lg" href="#">Get Started</a>
+          <a class="btn btn--ghost" href="#">Request Demo</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site__footer" role="contentinfo">
+    <div class="container footer__inner">
+      <div class="footer__brand">
+        <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="var(--accent)"/></svg>
+        <span>© SparkDev</span>
+      </div>
+      <ul class="footer__links">
+        <li><a href="#">Privacy</a></li>
+        <li><a href="#">Terms</a></li>
+        <li><a href="#">Contact</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>
