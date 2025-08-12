@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Loader2, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
 
 // shadcn/ui
@@ -29,6 +29,10 @@ const ALL_SECTIONS: { id: SectionKey; label: string }[] = [
   { id: "footer",       label: "Footer" },
 ];
 
+const FIXED_TOP: SectionKey = "nav";
+const FIXED_BOTTOM: SectionKey = "footer";
+const FIXED = new Set<SectionKey>([FIXED_TOP, FIXED_BOTTOM]);
+
 const THEMES = ["modern_saas", "minimal", "playful", "elegant", "industrial"] as const;
 const COLOR_PALETTES = ["indigo_pink", "blue_cyan", "violet_fuchsia", "slate_amber", "emerald_lime"] as const;
 const CTA_OPTIONS = ["Start Free", "Request Demo", "Get Started", "Contact Sales"] as const;
@@ -56,10 +60,16 @@ function pruneEmpty<T extends Record<string, unknown>>(obj: T): Partial<T> {
   return out;
 }
 
+/** Ensure nav is always first and footer always last, preserving relative order of others. */
+function clampOrder(order: SectionKey[]): SectionKey[] {
+  const middle = order.filter((s) => s !== FIXED_TOP && s !== FIXED_BOTTOM);
+  return [FIXED_TOP, ...middle, FIXED_BOTTOM];
+}
+
 // ---------------- split pill row ----------------
 function SectionRow({
   id, label, idx, isOn, count, onMove, onToggle,
-  onDragStart, onDragOverRow, onDropRow,
+  onDragStart, onDragOverRow, onDropRow, isFixed
 }: {
   id: SectionKey;
   label: string;
@@ -73,106 +83,129 @@ function SectionRow({
   onDragStart: (id: SectionKey) => void;
   onDragOverRow: (overIndex: number) => void;
   onDropRow: () => void;
+
+  // fixed row flags
+  isFixed: boolean;
 }) {
-  const canUp   = idx > 0;
-  const canDown = idx < count - 1;
+  const canUp   = !isFixed && idx > 0;
+  const canDown = !isFixed && idx < count - 1;
 
   return (
-<div className="relative mx-auto w-full sm:w-[85%] md:w-[70%]">
-  <div
-    role="switch"
-    aria-checked={isOn}
-    tabIndex={0}
-    onClick={() => onToggle(id)}
-    onKeyDown={(e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        onToggle(id);
-      }
-    }}
-    draggable
-    onDragStart={(e) => {
-      e.dataTransfer.effectAllowed = "move";
-      // Minimal invisible ghost so original element feels like it's moving
-      const img = new Image();
-      img.src =
-        "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=";
-      e.dataTransfer.setDragImage(img, 0, 0);
+    <div className="relative mx-auto w-full sm:w-[85%] md:w-[70%]">
+      <div
+        role="switch"
+        aria-checked={isOn}
+        tabIndex={0}
+        onClick={() => onToggle(id)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle(id);
+          }
+        }}
+        draggable={!isFixed}
+        onDragStart={(e) => {
+          if (isFixed) return;
+          e.dataTransfer.effectAllowed = "move";
+          const img = new Image();
+          img.src =
+            "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=";
+          e.dataTransfer.setDragImage(img, 0, 0);
 
-      e.currentTarget.classList.add("dragging");
-      onDragStart(id);
+          e.currentTarget.classList.add("dragging");
+          onDragStart(id);
+        }}
+        onDragOver={(e) => {
+          if (isFixed) return;
+          e.preventDefault();
+          e.currentTarget.classList.add("drag-over");
+          onDragOverRow(idx);
+        }}
+        onDragEnter={(e) => {
+          if (isFixed) return;
+          e.preventDefault();
+          e.currentTarget.classList.add("drag-over");
+        }}
+        onDragLeave={(e) => {
+          e.currentTarget.classList.remove("drag-over");
+        }}
+        onDrop={(e) => {
+          if (isFixed) return;
+          e.preventDefault();
+          e.currentTarget.classList.remove("drag-over");
+          onDropRow();
+        }}
+        onDragEnd={(e) => {
+          e.currentTarget.classList.remove("dragging");
+          e.currentTarget.classList.remove("drag-over");
+        }}
+        className={[
+          "split-pill relative overflow-hidden rounded-full border select-none",
+          "h-16 md:h-20 px-2",
+          "transition-colors",
+          isOn ? "cursor-pointer" : "opacity-70 grayscale cursor-pointer",
+          isFixed ? "cursor-default" : "md:active:cursor-grabbing",
+        ].join(" ")}
+        title={isOn ? "Click to turn off" : "Click to turn on"}
+      >
+        {/* Decorative left/right “rails” */}
+<div
+  className="pill-side absolute inset-y-0 left-0 w-14 rounded-l-full pointer-events-none"
+  style={{ borderLeft: "none" }}
+/>
+<div
+  className="pill-side absolute inset-y-0 right-0 w-14 rounded-r-full pointer-events-none"
+  style={{ borderRight: "none" }}
+/>
+
+{/* Hover highlight in the middle */}
+<div className="pill-center absolute inset-y-0 left-14 right-14 rounded-full pointer-events-none" />
+
+{/* Left Arrow — hidden for fixed rows */}
+{!isFixed && (
+  <Button
+    type="button"
+    variant="ghost"
+    size="icon"
+    className="absolute left-1 top-1/2 -translate-y-1/2 h-10 w-10 md:cursor-grab md:active:cursor-grabbing"
+    onClick={(e) => {
+      e.stopPropagation();
+      onMove(id, -1);
     }}
-    onDragOver={(e) => {
-      e.preventDefault();
-      e.currentTarget.classList.add("drag-over");
-      onDragOverRow(idx);
-    }}
-    onDragEnter={(e) => {
-      e.preventDefault();
-      e.currentTarget.classList.add("drag-over");
-    }}
-    onDragLeave={(e) => {
-      e.currentTarget.classList.remove("drag-over");
-    }}
-    onDrop={(e) => {
-      e.preventDefault();
-      e.currentTarget.classList.remove("drag-over");
-      onDropRow();
-    }}
-    onDragEnd={(e) => {
-      e.currentTarget.classList.remove("dragging");
-      e.currentTarget.classList.remove("drag-over");
-    }}
-    className={[
-      "split-pill relative overflow-hidden rounded-full border cursor-pointer select-none",
-      "h-16 md:h-20 px-2",
-      "transition-colors",
-      isOn ? "" : "opacity-70 grayscale is-off",
-      "active:cursor-grabbing",
-    ].join(" ")}
-    title={isOn ? "Click to turn off" : "Click to turn on"}
+    disabled={!canUp}
+    title="Move up (drag anywhere to reorder)"
   >
-    {/* Left Arrow */}
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className="absolute left-1 top-1/2 -translate-y-1/2 h-10 w-10 md:cursor-grab md:active:cursor-grabbing"
-      onClick={(e) => {
-        e.stopPropagation();
-        onMove(id, -1);
-      }}
-      disabled={!canUp}
-      title="Move up (drag anywhere to reorder)"
-    >
-      <ChevronUp className="h-5 w-5 md:h-6 md:w-6" />
-    </Button>
+    <ChevronUp className="h-5 w-5 md:h-6 md:w-6" />
+  </Button>
+)}
 
-    {/* Center label */}
-    <div className="pointer-events-none absolute inset-0 grid place-items-center">
-      <span className="text-base md:text-lg font-semibold tracking-tight text-foreground">
-        {label} {!isOn && <span className="ml-1 text-muted-foreground text-sm">(off)</span>}
-      </span>
-    </div>
-
-    {/* Right Arrow */}
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon"
-      className="absolute right-1 top-1/2 -translate-y-1/2 h-10 w-10 md:cursor-grab md:active:cursor-grabbing"
-      onClick={(e) => {
-        e.stopPropagation();
-        onMove(id, +1);
-      }}
-      disabled={!canDown}
-      title="Move down (drag anywhere to reorder)"
-    >
-      <ChevronDown className="h-5 w-5 md:h-6 md:w-6" />
-    </Button>
-  </div>
+{/* Center label (between rails) */}
+<div className="pointer-events-none absolute inset-y-0 left-14 right-14 grid place-items-center">
+  <span className="text-lg md:text-xl font-semibold tracking-tight text-foreground">
+    {label} {!isOn && <span className="ml-1 text-muted-foreground text-sm">(off)</span>}
+  </span>
 </div>
 
+{/* Right Arrow — hidden for fixed rows */}
+{!isFixed && (
+  <Button
+    type="button"
+    variant="ghost"
+    size="icon"
+    className="absolute right-1 top-1/2 -translate-y-1/2 h-10 w-10 md:cursor-grab md:active:cursor-grabbing"
+    onClick={(e) => {
+      e.stopPropagation();
+      onMove(id, +1);
+    }}
+    disabled={!canDown}
+    title="Move down (drag anywhere to reorder)"
+  >
+    <ChevronDown className="h-5 w-5 md:h-6 md:w-6" />
+  </Button>
+)}
+
+      </div>
+    </div>
   );
 }
 
@@ -196,14 +229,22 @@ export default function App() {
   const [notes, setNotes] = useState("");
 
   // sections (enabled + order)
-  const [enabledSections, setEnabledSections] = useState<SectionKey[]>(ALL_SECTIONS.map((s) => s.id));
-  const [order, setOrder] = useState<SectionKey[]>(ALL_SECTIONS.map((s) => s.id));
+  const [enabledSections, setEnabledSections] = useState<SectionKey[]>(
+    ALL_SECTIONS.map((s) => s.id) // both nav + footer ON by default
+  );
+  const [order, setOrder] = useState<SectionKey[]>(clampOrder(ALL_SECTIONS.map((s) => s.id)));
   const enabledSet = useMemo(() => new Set(enabledSections), [enabledSections]);
+
+  useEffect(() => {
+    if (!palette) return; // keep whatever index.html set (yellow)
+    document.documentElement.setAttribute("data-palette", palette);
+  }, [palette]);
 
   // drag state
   const [draggingId, setDraggingId] = useState<SectionKey | null>(null);
 
   function move(id: SectionKey, dir: -1 | 1) {
+    if (FIXED.has(id)) return; // fixed rows cannot move
     setOrder((prev) => {
       const idx = prev.indexOf(id);
       if (idx < 0) return prev;
@@ -212,7 +253,7 @@ export default function App() {
       const next = [...prev];
       const [item] = next.splice(idx, 1);
       next.splice(j, 0, item);
-      return next;
+      return clampOrder(next);
     });
   }
 
@@ -220,35 +261,43 @@ export default function App() {
     setEnabledSections((prev) => {
       const isOn = prev.includes(id);
       if (isOn) {
-        // turn OFF: remove from enabled and push to bottom of order
+        // turn OFF
+        if (FIXED.has(id)) {
+          // fixed items stay in place; do NOT push to bottom
+          return prev.filter((x) => x !== id);
+        }
+        // non-fixed: remove from enabled and push to bottom (but keep footer last)
         setOrder((o) => {
           const idx = o.indexOf(id);
           if (idx === -1) return o;
           const next = [...o];
           next.splice(idx, 1);
-          next.push(id);
-          return next;
+          next.splice(next.length - 1, 0, id); // insert just before footer
+          return clampOrder(next);
         });
         return prev.filter((x) => x !== id);
       }
-      // turn ON: add back
+      // turn ON
       return [...prev, id];
     });
   }
 
   // DnD handlers (HTML5; no libs)
   function onDragStartRow(id: SectionKey) {
+    if (FIXED.has(id)) return; // cannot start dragging fixed rows
     setDraggingId(id);
   }
   function onDragOverRow(overIndex: number) {
     setOrder((prev) => {
-      if (!draggingId) return prev;
+      if (!draggingId || FIXED.has(draggingId)) return prev;
       const from = prev.indexOf(draggingId);
       if (from === -1 || from === overIndex) return prev;
+
+      // compute target index but never drop before nav or after footer
       const next = [...prev];
       next.splice(from, 1);
       next.splice(overIndex, 0, draggingId);
-      return next;
+      return clampOrder(next);
     });
   }
   function onDropRow() {
@@ -287,14 +336,14 @@ export default function App() {
   return (
     <TooltipProvider delayDuration={150}>
       <div className="app-container">
-        <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl page-title">
+        <h1 className="scroll-m-20 font-extrabold tracking-tight page-title">
           AI Website Builder
         </h1>
 
         {/* BASICS */}
-        <Card className="mb-4">
+        <Card className="mb-4 mt-8">
           <CardHeader className="pb-2">
-            <CardTitle className="scroll-m-20 text-xl font-semibold tracking-tight">Basics</CardTitle>
+            <CardTitle className="scroll-m-20 text-3xl font-semibold tracking-tight">Basics</CardTitle>
             <CardDescription className="text-muted-foreground">
               Brand, tagline & quick visual choices
             </CardDescription>
@@ -342,9 +391,9 @@ export default function App() {
         <Card className="mb-4">
           <CardHeader className="pb-2 flex flex-row items-start justify-between">
             <div>
-              <CardTitle className="scroll-m-20 text-xl font-semibold tracking-tight">Choose your Website's Sections</CardTitle>
+              <CardTitle className="scroll-m-20 text-3xl font-semibold tracking-tight">Choose your Website's Sections</CardTitle>
               <CardDescription className="text-muted-foreground">
-                Click a row to toggle on/off. Drag to reorder. Arrows also move rows.
+                Click a section to turn on/off. Drag to reorder.
               </CardDescription>
             </div>
             <Tooltip>
@@ -366,7 +415,7 @@ export default function App() {
                   border: "1px solid hsl(var(--primary))",
                 }}
               >
-                Toggle sections by clicking. Drag rows to reorder. Turned-off sections appear gray and jump to the bottom.
+                Toggle sections by clicking. Drag rows to reorder. Turned-off sections appear gray. Header stays at the top; Footer stays at the bottom.
               </TooltipContent>
             </Tooltip>
           </CardHeader>
@@ -375,6 +424,7 @@ export default function App() {
             {order.map((id, i) => {
               const s = ALL_SECTIONS.find((x) => x.id === id)!;
               const isOn = enabledSet.has(id);
+              const isFixed = FIXED.has(id);
               return (
                 <SectionRow
                   key={id}
@@ -383,6 +433,7 @@ export default function App() {
                   idx={i}
                   count={order.length}
                   isOn={isOn}
+                  isFixed={isFixed}
                   onMove={move}
                   onToggle={toggleSection}
                   onDragStart={onDragStartRow}
@@ -397,7 +448,7 @@ export default function App() {
         {/* ADVANCED */}
         <Card className="mb-4">
           <CardHeader className="pb-2">
-            <CardTitle className="scroll-m-20 text-xl font-semibold tracking-tight">Advanced</CardTitle>
+            <CardTitle className="scroll-m-20 text-3xl font-semibold tracking-tight">Advanced</CardTitle>
             <CardDescription className="text-muted-foreground">Tone, layout & motion</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
@@ -427,7 +478,7 @@ export default function App() {
         {/* NOTES + SUBMIT */}
         <Card className="mb-4">
           <CardHeader className="pb-2">
-            <CardTitle className="scroll-m-20 text-xl font-semibold tracking-tight">Additional notes</CardTitle>
+            <CardTitle className="scroll-m-20 text-3xl font-semibold tracking-tight">Additional notes</CardTitle>
             <CardDescription className="text-muted-foreground">Optional free-form guidance (max 500 chars)</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -443,16 +494,25 @@ export default function App() {
               </div>
             </div>
             <div className="flex justify-end pt-2">
-              <Button className="px-6" size="lg" onClick={onGenerate} disabled={isGenerating} aria-busy={isGenerating}>
-                {isGenerating ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Generating…
-                  </span>
-                ) : (
-                  "Generate landing page"
-                )}
-              </Button>
+
+<Button
+  className="px-10 py-8 text-lg leading-none"   // unchanged size
+  onClick={onGenerate}
+  disabled={isGenerating}
+  aria-busy={isGenerating}
+>
+  {isGenerating ? (
+    <span className="inline-flex items-center gap-2">
+      <Loader2 className="h-5 w-5 animate-spin" />
+      <span className="btn-text-scale">Generating…</span>
+    </span>
+  ) : (
+    <span className="btn-text-scale">Generate Website</span>
+  )}
+</Button>
+
+
+
             </div>
           </CardContent>
         </Card>
