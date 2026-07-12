@@ -124,7 +124,7 @@ Open [http://localhost:5173](http://localhost:5173). For the quickest first run,
 
 ## ⚡ Deploy to Vercel
 
-The repository includes a root [`vercel.json`](vercel.json) with the frontend build, Python function, API rewrite, SPA fallback, duration, memory, and security headers already configured.
+The repository includes a root [`vercel.json`](vercel.json) with the frontend build, Python function, API rewrite, SPA fallback, duration, bundle exclusions, and security headers already configured. Both the frontend and API deploy together as one Vercel project.
 
 1. Push the repository to GitHub.
 2. Import it into Vercel, keeping the repository root as the project root.
