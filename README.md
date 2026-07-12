@@ -124,17 +124,17 @@ Open [http://localhost:5173](http://localhost:5173). For the quickest first run,
 
 ## ⚡ Deploy to Vercel
 
-The repository includes a root [`vercel.json`](vercel.json) with the frontend build, Python function, API rewrite, SPA fallback, duration, bundle exclusions, and security headers already configured. Both the frontend and API deploy together as one Vercel project.
+The repository uses Vercel Services to deploy Vite and FastAPI together in one project. The root [`vercel.json`](vercel.json) defines both services, routes `/api/*` to FastAPI, routes everything else to Vite, and applies shared security headers.
 
 1. Push the repository to GitHub.
 2. Import it into Vercel, keeping the repository root as the project root.
-3. Add `OPENAI_API_KEY` in **Project Settings → Environment Variables**.
-4. Set `ALLOWED_ORIGINS` to the deployed origin, such as `https://canvas-example.vercel.app`.
+3. In **Settings → Build and Deployment**, set **Framework Preset** to **Services**. This is required for a Vite + FastAPI project.
+4. Add `OPENAI_API_KEY` in **Project Settings → Environment Variables**.
 5. Leave `VITE_API_BASE` unset so the frontend uses the same-origin `/api` route.
-6. Deploy and verify `/api/health` before running a Draft generation.
+6. Deploy and verify both `/` and `/api/health` before running a Draft generation.
 
 > [!NOTE]
-> The function is configured for a 300-second maximum duration. Your Vercel plan must support that duration. For a high-volume public product, add authentication, metering, distributed rate limiting, durable project storage, and a background job provider.
+> Vercel Services and Fluid Compute are required. For a high-volume public product, add authentication, metering, distributed rate limiting, durable project storage, and a background job provider.
 
 ## ✓ Quality and verification
 
@@ -172,8 +172,6 @@ Failed output receives one focused repair pass and must pass validation before i
 
 ```text
 .
-├── api/
-│   └── index.py                 # Vercel Python entry point
 ├── backend/
 │   ├── app/
 │   │   ├── main.py              # FastAPI service
