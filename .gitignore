@@ -1,32 +1,70 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
 *.pyd
 *.so
-.env
-.venv
+.Python
+.venv/
 venv/
 env/
+ENV/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
 
-# Node / frontend
+# Node, Vite, and TypeScript
 node_modules/
+frontend/node_modules/
 dist/
+frontend/dist/
 build/
+*.tsbuildinfo
+*.local
+.eslintcache
 
-# IDE / editor
-.vscode/
+# Vercel
+.vercel/
+
+# Generated website artifacts and previews
+backend/site_out/
+backend/static/previews/
+*.zip
+
+# Logs and temporary files
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tmp
+*.temp
+*.swp
+*.swo
+~$*
+
+# Editors
 .idea/
+.vscode/*
+!.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
 
-# OS files
+# Operating systems
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
-
-# Python cache
-*.egg-info/
-
-# Output folders
-backend/site_out/
+Desktop.ini

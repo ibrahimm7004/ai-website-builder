@@ -19,5 +19,9 @@ export default tseslint.config([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // shadcn component modules intentionally export reusable style variants.
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

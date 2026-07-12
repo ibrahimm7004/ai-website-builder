@@ -1,522 +1,140 @@
-import { useMemo, useState, useEffect } from "react";
-import { Loader2, ChevronUp, ChevronDown, HelpCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import JSZip from "jszip";
+import { ArrowDown, ArrowUp, Check, Download, ExternalLink, Eye, Loader2, Monitor, RotateCcw, Smartphone, Sparkles, Tablet, X } from "lucide-react";
+import { createPreviewDocument, generateSite, type GenerateResponse, type SectionId, type SiteSpec } from "./api";
 
-// shadcn/ui
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
-// ---------------- types / constants ----------------
-type SectionKey =
-  | "nav" | "hero" | "features" | "social_proof" | "deep_dive"
-  | "pricing" | "faq" | "cta_final" | "footer";
-
-const API_BASE = (import.meta as any).env?.VITE_API_BASE ?? "http://127.0.0.1:8000";
-
-const ALL_SECTIONS: { id: SectionKey; label: string }[] = [
-  { id: "nav",          label: "Header / Nav Bar" },
-  { id: "hero",         label: "Hero" },
-  { id: "features",     label: "Features" },
-  { id: "social_proof", label: "Social Proof" },
-  { id: "deep_dive",    label: "Deep Dive" },
-  { id: "pricing",      label: "Pricing" },
-  { id: "faq",          label: "FAQ" },
-  { id: "cta_final",    label: "Final CTA" },
-  { id: "footer",       label: "Footer" },
+const SECTION_LABELS: Record<SectionId, string> = { nav: "Navigation", hero: "Hero", features: "Features", social_proof: "Proof", deep_dive: "Deep dive", pricing: "Pricing", faq: "FAQ", cta_final: "Final CTA", footer: "Footer" };
+const INITIAL_SECTIONS = (Object.keys(SECTION_LABELS) as SectionId[]).map((id) => ({ id, enabled: id !== "pricing" }));
+const INITIAL: SiteSpec = {
+  brand: "", tagline: "", business_description: "", target_audience: "", primary_goal: "Generate qualified leads",
+  differentiators: [], proof_points: [], theme: "Modern editorial", color_palette: "",
+  tone: "authoritative", layout_style: "editorial", motion_level: "subtle", quality_tier: "production",
+  primary_cta: "Get started", primary_cta_url: "#contact", secondary_cta: "Learn more",
+  secondary_cta_url: "#features", sections: INITIAL_SECTIONS,
+};
+type Viewport = "desktop" | "tablet" | "mobile";
+const BUILD_STAGES = [
+  { label: "Reading your brief", detail: "Finding the strongest positioning and audience insight." },
+  { label: "Shaping the creative direction", detail: "Choosing a distinctive visual language, rhythm, and narrative." },
+  { label: "Writing the page story", detail: "Turning your real differentiators into focused, credible copy." },
+  { label: "Building the responsive website", detail: "Composing production HTML, CSS, interactions, and mobile layouts." },
+  { label: "Inspecting every detail", detail: "Checking semantics, accessibility, links, SEO, and runtime safety." },
+  { label: "Applying the final polish", detail: "Repairing anything that does not meet the production quality bar." },
 ];
 
-const FIXED_TOP: SectionKey = "nav";
-const FIXED_BOTTOM: SectionKey = "footer";
-const FIXED = new Set<SectionKey>([FIXED_TOP, FIXED_BOTTOM]);
-
-const THEMES = ["modern_saas", "minimal", "playful", "elegant", "industrial"] as const;
-const COLOR_PALETTES = ["indigo_pink", "blue_cyan", "violet_fuchsia", "slate_amber", "emerald_lime"] as const;
-const CTA_OPTIONS = ["Start Free", "Request Demo", "Get Started", "Contact Sales"] as const;
-const TONE = ["formal", "playful"] as const;
-const LAYOUT = ["split", "centered"] as const;
-const MOTION = ["none", "light"] as const;
-
-// ---------------- helpers ----------------
-function InlineField(props: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <Label className="w-24 shrink-0 text-sm text-muted-foreground leading-none">
-        {props.label}
-      </Label>
-      <div className="flex-1">{props.children}</div>
-    </div>
-  );
+function Field({ label, hint, children, wide }: { label: string; hint?: string; children: React.ReactNode; wide?: boolean }) {
+  return <label className={`field ${wide ? "field--wide" : ""}`}><span>{label}</span>{hint && <small>{hint}</small>}{children}</label>;
 }
-function clampString(s: string, max = 500) { return s.length <= max ? s : s.slice(0, max); }
-function pruneEmpty<T extends Record<string, unknown>>(obj: T): Partial<T> {
-  const out: Partial<T> = {};
-  (Object.keys(obj) as (keyof T)[]).forEach((k) => {
-    const v = obj[k]; if (v !== "" && v !== null && v !== undefined) out[k] = v;
-  });
-  return out;
-}
+function splitLines(value: string) { return value.split("\n").map((item) => item.trim()).filter(Boolean); }
 
-/** Ensure nav is always first and footer always last, preserving relative order of others. */
-function clampOrder(order: SectionKey[]): SectionKey[] {
-  const middle = order.filter((s) => s !== FIXED_TOP && s !== FIXED_BOTTOM);
-  return [FIXED_TOP, ...middle, FIXED_BOTTOM];
-}
-
-// ---------------- split pill row ----------------
-function SectionRow({
-  id, label, idx, isOn, count, onMove, onToggle,
-  onDragStart, onDragOverRow, onDropRow, isFixed
-}: {
-  id: SectionKey;
-  label: string;
-  idx: number;
-  isOn: boolean;
-  count: number;
-  onMove: (id: SectionKey, dir: -1|1) => void;
-  onToggle: (id: SectionKey) => void;
-
-  // DnD
-  onDragStart: (id: SectionKey) => void;
-  onDragOverRow: (overIndex: number) => void;
-  onDropRow: () => void;
-
-  // fixed row flags
-  isFixed: boolean;
-}) {
-  const canUp   = !isFixed && idx > 0;
-  const canDown = !isFixed && idx < count - 1;
-
-  return (
-    <div className="relative mx-auto w-full sm:w-[85%] md:w-[70%]">
-      <div
-        role="switch"
-        aria-checked={isOn}
-        tabIndex={0}
-        onClick={() => onToggle(id)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onToggle(id);
-          }
-        }}
-        draggable={!isFixed}
-        onDragStart={(e) => {
-          if (isFixed) return;
-          e.dataTransfer.effectAllowed = "move";
-          const img = new Image();
-          img.src =
-            "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=";
-          e.dataTransfer.setDragImage(img, 0, 0);
-
-          e.currentTarget.classList.add("dragging");
-          onDragStart(id);
-        }}
-        onDragOver={(e) => {
-          if (isFixed) return;
-          e.preventDefault();
-          e.currentTarget.classList.add("drag-over");
-          onDragOverRow(idx);
-        }}
-        onDragEnter={(e) => {
-          if (isFixed) return;
-          e.preventDefault();
-          e.currentTarget.classList.add("drag-over");
-        }}
-        onDragLeave={(e) => {
-          e.currentTarget.classList.remove("drag-over");
-        }}
-        onDrop={(e) => {
-          if (isFixed) return;
-          e.preventDefault();
-          e.currentTarget.classList.remove("drag-over");
-          onDropRow();
-        }}
-        onDragEnd={(e) => {
-          e.currentTarget.classList.remove("dragging");
-          e.currentTarget.classList.remove("drag-over");
-        }}
-        className={[
-          "split-pill relative overflow-hidden rounded-full border select-none",
-          "h-16 md:h-20 px-2",
-          "transition-colors",
-          isOn ? "cursor-pointer" : "opacity-70 grayscale cursor-pointer",
-          isFixed ? "cursor-default" : "md:active:cursor-grabbing",
-        ].join(" ")}
-        title={isOn ? "Click to turn off" : "Click to turn on"}
-      >
-        {/* Decorative left/right “rails” */}
-<div
-  className="pill-side absolute inset-y-0 left-0 w-14 rounded-l-full pointer-events-none"
-  style={{ borderLeft: "none" }}
-/>
-<div
-  className="pill-side absolute inset-y-0 right-0 w-14 rounded-r-full pointer-events-none"
-  style={{ borderRight: "none" }}
-/>
-
-{/* Hover highlight in the middle */}
-<div className="pill-center absolute inset-y-0 left-14 right-14 rounded-full pointer-events-none" />
-
-{/* Left Arrow — hidden for fixed rows */}
-{!isFixed && (
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon"
-    className="absolute left-1 top-1/2 -translate-y-1/2 h-10 w-10 md:cursor-grab md:active:cursor-grabbing"
-    onClick={(e) => {
-      e.stopPropagation();
-      onMove(id, -1);
-    }}
-    disabled={!canUp}
-    title="Move up (drag anywhere to reorder)"
-  >
-    <ChevronUp className="h-5 w-5 md:h-6 md:w-6" />
-  </Button>
-)}
-
-{/* Center label (between rails) */}
-<div className="pointer-events-none absolute inset-y-0 left-14 right-14 grid place-items-center">
-  <span className="text-lg md:text-xl font-semibold tracking-tight text-foreground">
-    {label} {!isOn && <span className="ml-1 text-muted-foreground text-sm">(off)</span>}
-  </span>
-</div>
-
-{/* Right Arrow — hidden for fixed rows */}
-{!isFixed && (
-  <Button
-    type="button"
-    variant="ghost"
-    size="icon"
-    className="absolute right-1 top-1/2 -translate-y-1/2 h-10 w-10 md:cursor-grab md:active:cursor-grabbing"
-    onClick={(e) => {
-      e.stopPropagation();
-      onMove(id, +1);
-    }}
-    disabled={!canDown}
-    title="Move down (drag anywhere to reorder)"
-  >
-    <ChevronDown className="h-5 w-5 md:h-6 md:w-6" />
-  </Button>
-)}
-
-      </div>
-    </div>
-  );
-}
-
-// ---------------- main ----------------
 export default function App() {
-  // basics
-  const [brand, setBrand] = useState("");
-  const [tagline, setTagline] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-
-  const [theme, setTheme] = useState<string>("");
-  const [palette, setPalette] = useState<string>("");
-  const [primaryCta, setPrimaryCta] = useState<string>("");
-  const [secondaryCta, setSecondaryCta] = useState<string>("");
-
-  // advanced
-  const [tone, setTone] = useState<string>("");
-  const [layout, setLayout] = useState<string>("");
-  const [motion, setMotion] = useState<string>("");
-
-  const [notes, setNotes] = useState("");
-
-  // sections (enabled + order)
-  const [enabledSections, setEnabledSections] = useState<SectionKey[]>(
-    ALL_SECTIONS.map((s) => s.id) // both nav + footer ON by default
-  );
-  const [order, setOrder] = useState<SectionKey[]>(clampOrder(ALL_SECTIONS.map((s) => s.id)));
-  const enabledSet = useMemo(() => new Set(enabledSections), [enabledSections]);
+  const [spec, setSpec] = useState<SiteSpec>(INITIAL);
+  const [listText, setListText] = useState({ differentiators: "", proof_points: "" });
+  const [result, setResult] = useState<GenerateResponse | null>(null);
+  const [status, setStatus] = useState<"idle" | "generating" | "done" | "error">("idle");
+  const [error, setError] = useState("");
+  const [viewport, setViewport] = useState<Viewport>("desktop");
+  const [activePanel, setActivePanel] = useState<"preview" | "strategy" | "quality">("preview");
+  const [buildStage, setBuildStage] = useState(0);
+  const [previewKey, setPreviewKey] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const outputRef = useRef<HTMLElement | null>(null);
+  const preview = useMemo(() => result ? createPreviewDocument(result.files) : "", [result]);
 
   useEffect(() => {
-    if (!palette) return; // keep whatever index.html set (yellow)
-    document.documentElement.setAttribute("data-palette", palette);
-  }, [palette]);
+    if (status !== "generating") return;
+    setBuildStage(0);
+    const timer = window.setInterval(() => setBuildStage((stage) => Math.min(stage + 1, BUILD_STAGES.length - 1)), 6500);
+    return () => window.clearInterval(timer);
+  }, [status]);
 
-  // drag state
-  const [draggingId, setDraggingId] = useState<SectionKey | null>(null);
-
-  function move(id: SectionKey, dir: -1 | 1) {
-    if (FIXED.has(id)) return; // fixed rows cannot move
-    setOrder((prev) => {
-      const idx = prev.indexOf(id);
-      if (idx < 0) return prev;
-      const j = idx + dir;
-      if (j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      const [item] = next.splice(idx, 1);
-      next.splice(j, 0, item);
-      return clampOrder(next);
-    });
+  function update<K extends keyof SiteSpec>(key: K, value: SiteSpec[K]) { setSpec((current) => ({ ...current, [key]: value })); }
+  function moveSection(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= spec.sections.length) return;
+    const sections = [...spec.sections]; [sections[index], sections[target]] = [sections[target], sections[index]];
+    update("sections", sections);
   }
-
-  function toggleSection(id: SectionKey) {
-    setEnabledSections((prev) => {
-      const isOn = prev.includes(id);
-      if (isOn) {
-        // turn OFF
-        if (FIXED.has(id)) {
-          // fixed items stay in place; do NOT push to bottom
-          return prev.filter((x) => x !== id);
-        }
-        // non-fixed: remove from enabled and push to bottom (but keep footer last)
-        setOrder((o) => {
-          const idx = o.indexOf(id);
-          if (idx === -1) return o;
-          const next = [...o];
-          next.splice(idx, 1);
-          next.splice(next.length - 1, 0, id); // insert just before footer
-          return clampOrder(next);
-        });
-        return prev.filter((x) => x !== id);
-      }
-      // turn ON
-      return [...prev, id];
-    });
+  function toggleSection(id: SectionId) {
+    update("sections", spec.sections.map((section) => section.id === id ? { ...section, enabled: !section.enabled } : section));
   }
-
-  // DnD handlers (HTML5; no libs)
-  function onDragStartRow(id: SectionKey) {
-    if (FIXED.has(id)) return; // cannot start dragging fixed rows
-    setDraggingId(id);
-  }
-  function onDragOverRow(overIndex: number) {
-    setOrder((prev) => {
-      if (!draggingId || FIXED.has(draggingId)) return prev;
-      const from = prev.indexOf(draggingId);
-      if (from === -1 || from === overIndex) return prev;
-
-      // compute target index but never drop before nav or after footer
-      const next = [...prev];
-      next.splice(from, 1);
-      next.splice(overIndex, 0, draggingId);
-      return clampOrder(next);
-    });
-  }
-  function onDropRow() {
-    setDraggingId(null);
-  }
-
   async function onGenerate() {
-    if (isGenerating) return;
-    setIsGenerating(true);
-
-    const sections = order.map((id) => ({ id, enabled: enabledSet.has(id) }));
-    const site_spec = pruneEmpty({
-      brand, tagline, theme, color_palette: palette,
-      primary_cta: primaryCta, secondary_cta: secondaryCta,
-      tone, layout_style: layout, motion_level: motion,
-      notes: clampString(notes, 500), sections,
-    });
-
-    try {
-      const res = await fetch(`${API_BASE}/api/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(site_spec),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      alert("Site generated. Check backend/site_out for files.");
-      console.log("API response:", data);
-    } catch (e: any) {
-      alert(`Error: ${e?.message || e}`);
-    } finally {
-      setIsGenerating(false);
+    if (!spec.brand.trim() || !spec.business_description.trim()) {
+      setError("Add a brand name and a short description of the business to continue."); setStatus("error"); return;
     }
+    const controller = new AbortController(); abortRef.current = controller;
+    setStatus("generating"); setError(""); setActivePanel("preview");
+    window.setTimeout(() => outputRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+    try {
+      const payload = { ...spec, differentiators: splitLines(listText.differentiators), proof_points: splitLines(listText.proof_points) };
+      const generated = await generateSite(payload, controller.signal);
+      setResult(generated); setPreviewKey((key) => key + 1); setStatus("done"); setActivePanel("preview");
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") { setError((err as Error).message); setStatus("error"); }
+      else setStatus("idle");
+    } finally { abortRef.current = null; }
+  }
+  async function download() {
+    if (!result) return;
+    const zip = new JSZip(); result.files.forEach((file) => zip.file(file.path, file.content));
+    zip.file("README.md", `# ${spec.brand}\n\nGenerated with Canvas. Open index.html or deploy these static files.`);
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
+    anchor.href = url; anchor.download = `${spec.brand.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "website"}.zip`; anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function openPreview() {
+    if (!preview) return; const blob = new Blob([preview], { type: "text/html" });
+    const url = URL.createObjectURL(blob); window.open(url, "_blank", "noopener,noreferrer"); setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
-  return (
-    <TooltipProvider delayDuration={150}>
-      <div className="app-container">
-        <h1 className="scroll-m-20 font-extrabold tracking-tight page-title">
-          AI Website Builder
-        </h1>
+  return <div className="app-shell">
+    <header className="topbar"><a className="wordmark" href="#top"><span><Sparkles size={17} /></span>Canvas</a><div className="topbar__meta"><span className="status-dot" />AI website studio</div></header>
+    <main id="top">
+      <section className="intro"><p className="eyebrow">Creative direction → production code</p><h1>Build a site that feels<br /><em>designed, not generated.</em></h1><p>Give Canvas the truth about your business. It develops the strategy, art direction, copy, and production-ready website—then validates the result before you see it.</p></section>
 
-        {/* BASICS */}
-        <Card className="mb-4 mt-8">
-          <CardHeader className="pb-2">
-            <CardTitle className="scroll-m-20 text-3xl font-semibold tracking-tight">Basics</CardTitle>
-            <CardDescription className="text-muted-foreground">
-              Brand, tagline & quick visual choices
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-8">
-              <InlineField label="Brand">
-                <Input placeholder="e.g. Nebula Metrics" value={brand} onChange={(e) => setBrand(e.target.value)} />
-              </InlineField>
-              <InlineField label="Tagline">
-                <Input placeholder="Short, punchy value proposition" value={tagline} onChange={(e) => setTagline(e.target.value)} />
-              </InlineField>
-              <InlineField label="Theme">
-                <Select value={theme} onValueChange={setTheme}>
-                  <SelectTrigger><SelectValue placeholder="Pick a theme" /></SelectTrigger>
-                  <SelectContent>{THEMES.map((t) => (<SelectItem key={t} value={t}>{t.replaceAll("_"," ")}</SelectItem>))}</SelectContent>
-                </Select>
-              </InlineField>
-            </div>
+      <div className="workspace">
+        <section className="brief-panel" aria-label="Website brief">
+          <div className="panel-heading"><div><span>01</span><h2>Creative brief</h2></div><p>Specific input creates specific design.</p></div>
+          <div className="form-grid">
+            <Field label="Brand name · Required"><input value={spec.brand} onChange={(e) => update("brand", e.target.value)} placeholder="e.g. Northstar Finance" maxLength={100} required /></Field>
+            <Field label="Tagline · Optional"><input value={spec.tagline} onChange={(e) => update("tagline", e.target.value)} placeholder="Canvas can write one for you" maxLength={180} /></Field>
+            <Field label="What does the business do? · Required" hint="A couple of sentences is enough to get started." wide><textarea value={spec.business_description} onChange={(e) => update("business_description", e.target.value)} placeholder="Describe the product or service and why it is useful…" rows={4} maxLength={1200} required /></Field>
+            <Field label="Who is this for? · Optional" hint="Leave blank and Canvas will infer the likely audience." wide><textarea value={spec.target_audience || ""} onChange={(e) => update("target_audience", e.target.value)} placeholder="e.g. Independent financial advisors who…" rows={3} maxLength={500} /></Field>
+            <Field label="Primary conversion goal"><input value={spec.primary_goal} onChange={(e) => update("primary_goal", e.target.value)} maxLength={240} /></Field>
+            <Field label="Visual direction"><select value={spec.theme} onChange={(e) => update("theme", e.target.value)}><option>Modern editorial</option><option>Technical precision</option><option>Warm and human</option><option>Luxury minimalism</option><option>Bold experimental</option></select></Field>
+            <Field label="Differentiators · Optional" hint="One factual point per line." wide><textarea value={listText.differentiators} onChange={(e) => setListText({ ...listText, differentiators: e.target.value })} placeholder={"Built for…\nUnlike alternatives…\nUnique capability…"} rows={4} /></Field>
+            <Field label="Proof points · Optional" hint="Only real metrics, credentials, or customer evidence." wide><textarea value={listText.proof_points} onChange={(e) => setListText({ ...listText, proof_points: e.target.value })} placeholder={"One factual proof point per line."} rows={3} /></Field>
+            <Field label="Reference direction · Optional" hint="Describe sites, eras, or visual ideas you admire." wide><textarea value={spec.reference_direction || ""} onChange={(e) => update("reference_direction", e.target.value)} placeholder="Editorial typography, generous negative space…" rows={3} maxLength={800} /></Field>
+            <Field label="Avoid · Optional" hint="Patterns, colors, or clichés you do not want." wide><input value={spec.avoid_direction || ""} onChange={(e) => update("avoid_direction", e.target.value)} placeholder="No glowing orbs, no fake dashboards…" maxLength={500} /></Field>
+          </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-8">
-              <InlineField label="Color palette">
-                <Select value={palette} onValueChange={setPalette}>
-                  <SelectTrigger><SelectValue placeholder="Choose colors" /></SelectTrigger>
-                  <SelectContent>{COLOR_PALETTES.map((p) => (<SelectItem key={p} value={p}>{p.replaceAll("_"," ")}</SelectItem>))}</SelectContent>
-                </Select>
-              </InlineField>
-              <InlineField label="Primary CTA">
-                <Select value={primaryCta} onValueChange={setPrimaryCta}>
-                  <SelectTrigger><SelectValue placeholder="Select primary CTA" /></SelectTrigger>
-                  <SelectContent>{CTA_OPTIONS.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent>
-                </Select>
-              </InlineField>
-              <InlineField label="Secondary CTA">
-                <Select value={secondaryCta} onValueChange={setSecondaryCta}>
-                  <SelectTrigger><SelectValue placeholder="Select secondary CTA" /></SelectTrigger>
-                  <SelectContent>{CTA_OPTIONS.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent>
-                </Select>
-              </InlineField>
-            </div>
-          </CardContent>
-        </Card>
+          <div className="subsection"><div className="subsection__heading"><h3>Page architecture</h3><p>Toggle and reorder the narrative.</p></div><div className="section-list">{spec.sections.map((section, index) => <div className={`section-row ${section.enabled ? "is-on" : ""}`} key={section.id}><button className="section-toggle" onClick={() => toggleSection(section.id)} aria-pressed={section.enabled}><span>{section.enabled ? <Check size={13} /> : <X size={13} />}</span>{SECTION_LABELS[section.id]}</button><div><button onClick={() => moveSection(index, -1)} disabled={index === 0} aria-label={`Move ${SECTION_LABELS[section.id]} up`}><ArrowUp size={15} /></button><button onClick={() => moveSection(index, 1)} disabled={index === spec.sections.length - 1} aria-label={`Move ${SECTION_LABELS[section.id]} down`}><ArrowDown size={15} /></button></div></div>)}</div></div>
 
-        {/* SECTIONS – split control + drag/reorder */}
-        <Card className="mb-4">
-          <CardHeader className="pb-2 flex flex-row items-start justify-between">
-            <div>
-              <CardTitle className="scroll-m-20 text-3xl font-semibold tracking-tight">Choose your Website's Sections</CardTitle>
-              <CardDescription className="text-muted-foreground">
-                Click a section to turn on/off. Drag to reorder.
-              </CardDescription>
-            </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="flex items-center justify-center w-6 h-6 rounded-full text-primary-foreground hover:opacity-90"
-                  style={{ background: "linear-gradient(90deg, hsl(var(--primary) / 0.85), hsl(var(--primary)))" }}
-                  aria-label="Help"
-                >
-                  <HelpCircle className="w-4 h-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="left"
-                className="max-w-xs"
-                style={{
-                  background: "linear-gradient(90deg, hsl(var(--primary) / 0.85), hsl(var(--primary)))",
-                  color: "hsl(var(--primary-foreground))",
-                  border: "1px solid hsl(var(--primary))",
-                }}
-              >
-                Toggle sections by clicking. Drag rows to reorder. Turned-off sections appear gray. Header stays at the top; Footer stays at the bottom.
-              </TooltipContent>
-            </Tooltip>
-          </CardHeader>
+          <div className="subsection"><div className="subsection__heading"><h3>Art direction & conversion</h3><p>Fine-tune the output.</p></div><div className="form-grid">
+            <Field label="Tone"><select value={spec.tone} onChange={(e) => update("tone", e.target.value)}><option>authoritative</option><option>conversational</option><option>bold</option><option>playful</option><option>luxury</option><option>technical</option></select></Field>
+            <Field label="Layout"><select value={spec.layout_style} onChange={(e) => update("layout_style", e.target.value)}><option>editorial</option><option>split</option><option>centered</option><option>immersive</option><option>bento</option></select></Field>
+            <Field label="Motion"><select value={spec.motion_level} onChange={(e) => update("motion_level", e.target.value)}><option>none</option><option>subtle</option><option>expressive</option></select></Field>
+            <Field label="Quality"><select value={spec.quality_tier} onChange={(e) => update("quality_tier", e.target.value as SiteSpec["quality_tier"])}><option value="draft">Draft — fastest</option><option value="production">Production — recommended</option><option value="premium">Premium — maximum quality</option></select></Field>
+            <Field label="Primary CTA"><input value={spec.primary_cta} onChange={(e) => update("primary_cta", e.target.value)} /></Field><Field label="Primary destination"><input value={spec.primary_cta_url} onChange={(e) => update("primary_cta_url", e.target.value)} placeholder="#contact or https://…" /></Field>
+            <Field label="Secondary CTA"><input value={spec.secondary_cta} onChange={(e) => update("secondary_cta", e.target.value)} /></Field><Field label="Secondary destination"><input value={spec.secondary_cta_url} onChange={(e) => update("secondary_cta_url", e.target.value)} /></Field>
+            <Field label="Non-negotiable content" wide><textarea value={spec.required_content || ""} onChange={(e) => update("required_content", e.target.value)} placeholder="Legal copy, specific features, contact details…" rows={3} maxLength={1500} /></Field>
+          </div></div>
 
-          <CardContent className="space-y-3">
-            {order.map((id, i) => {
-              const s = ALL_SECTIONS.find((x) => x.id === id)!;
-              const isOn = enabledSet.has(id);
-              const isFixed = FIXED.has(id);
-              return (
-                <SectionRow
-                  key={id}
-                  id={id}
-                  label={s.label}
-                  idx={i}
-                  count={order.length}
-                  isOn={isOn}
-                  isFixed={isFixed}
-                  onMove={move}
-                  onToggle={toggleSection}
-                  onDragStart={onDragStartRow}
-                  onDragOverRow={onDragOverRow}
-                  onDropRow={onDropRow}
-                />
-              );
-            })}
-          </CardContent>
-        </Card>
+          {status === "error" && <div className="error-banner" role="alert"><X size={17} /><span>{error}</span></div>}
+          <div className={`generate-bar ${status === "generating" ? "is-generating" : ""}`}><div><strong>{status === "generating" ? BUILD_STAGES[buildStage].label : "Ready to create"}</strong><span>{status === "generating" ? BUILD_STAGES[buildStage].detail : "Strategy, design, code, and QA in one run."}</span></div><div className="generate-actions">{status === "generating" && <span className="button-loader" aria-hidden="true"><Loader2 size={19} /></span>}{status === "generating" ? <button className="cancel-button" onClick={() => abortRef.current?.abort()}><X size={16} /> Cancel</button> : <button className="generate-button" onClick={onGenerate}><Sparkles size={18} /> {result ? "Generate a new direction" : "Design my website"}</button>}</div></div>
+        </section>
 
-        {/* ADVANCED */}
-        <Card className="mb-4">
-          <CardHeader className="pb-2">
-            <CardTitle className="scroll-m-20 text-3xl font-semibold tracking-tight">Advanced</CardTitle>
-            <CardDescription className="text-muted-foreground">Tone, layout & motion</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-y-4 gap-x-8">
-              <InlineField label="Tone">
-                <Select value={tone} onValueChange={setTone}>
-                  <SelectTrigger><SelectValue placeholder="Pick tone" /></SelectTrigger>
-                  <SelectContent>{TONE.map((t) => (<SelectItem key={t} value={t}>{t}</SelectItem>))}</SelectContent>
-                </Select>
-              </InlineField>
-              <InlineField label="Layout">
-                <Select value={layout} onValueChange={setLayout}>
-                  <SelectTrigger><SelectValue placeholder="Pick layout" /></SelectTrigger>
-                  <SelectContent>{LAYOUT.map((t) => (<SelectItem key={t} value={t}>{t}</SelectItem>))}</SelectContent>
-                </Select>
-              </InlineField>
-              <InlineField label="Motion">
-                <Select value={motion} onValueChange={setMotion}>
-                  <SelectTrigger><SelectValue placeholder="Choose motion" /></SelectTrigger>
-                  <SelectContent>{MOTION.map((t) => (<SelectItem key={t} value={t}>{t}</SelectItem>))}</SelectContent>
-                </Select>
-              </InlineField>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* NOTES + SUBMIT */}
-        <Card className="mb-4">
-          <CardHeader className="pb-2">
-            <CardTitle className="scroll-m-20 text-3xl font-semibold tracking-tight">Additional notes</CardTitle>
-            <CardDescription className="text-muted-foreground">Optional free-form guidance (max 500 chars)</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-start gap-2">
-              <Label className="w-24 shrink-0 text-base font-semibold leading-none mt-1.5">Notes</Label>
-              <div className="flex-1">
-                <Textarea
-                  placeholder="Details about tone, target audience, copy constraints, etc."
-                  value={notes}
-                  onChange={(e) => setNotes(clampString(e.target.value, 500))}
-                  rows={6}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end pt-2">
-
-<Button
-  className="px-10 py-8 text-lg leading-none"   // unchanged size
-  onClick={onGenerate}
-  disabled={isGenerating}
-  aria-busy={isGenerating}
->
-  {isGenerating ? (
-    <span className="inline-flex items-center gap-2">
-      <Loader2 className="h-5 w-5 animate-spin" />
-      <span className="btn-text-scale">Generating…</span>
-    </span>
-  ) : (
-    <span className="btn-text-scale">Generate Website</span>
-  )}
-</Button>
-
-
-
-            </div>
-          </CardContent>
-        </Card>
+        <section className="output-panel" aria-live="polite" ref={outputRef}>
+          <div className="output-top"><div className="tabs">{(["preview", "strategy", "quality"] as const).map((tab) => <button className={activePanel === tab ? "active" : ""} onClick={() => setActivePanel(tab)} key={tab}>{tab}</button>)}</div>{result && <div className="actions"><button onClick={download}><Download size={15} /> Export</button><button onClick={openPreview}><ExternalLink size={15} /> Open</button></div>}</div>
+          {!result && status !== "generating" && <div className="empty-state"><div><Eye size={28} /></div><h2>Your website will appear here</h2><p>Complete the brief and Canvas will create, validate, and prepare a responsive site you can preview and export.</p><ul><li><Check size={14} /> Creative strategy</li><li><Check size={14} /> Production HTML, CSS & JS</li><li><Check size={14} /> Automated quality checks</li></ul></div>}
+          {status === "generating" && <div className="generation-state"><div className="build-visual" aria-hidden="true"><div className="build-window"><span /><span /><span /><div className="build-lines"><i /><i /><i /><i /></div></div><div className="build-pulse" /></div><p className="eyebrow">Stage {buildStage + 1} of {BUILD_STAGES.length}</p><h2 key={BUILD_STAGES[buildStage].label}>{BUILD_STAGES[buildStage].label}</h2><p className="stage-detail">{BUILD_STAGES[buildStage].detail}</p><div className="progress-track"><span style={{ width: `${Math.max(12, ((buildStage + 1) / BUILD_STAGES.length) * 100)}%` }} /></div><div className="generation-steps">{BUILD_STAGES.map((stage, index) => <span className={index <= buildStage ? "active" : ""} key={stage.label}>{index + 1}</span>)}</div><p>Canvas is working through the full creative and engineering process. The finished site will open here automatically.</p></div>}
+          {result && status !== "generating" && activePanel === "preview" && <div className="preview-area"><div className="preview-toolbar"><div className="viewport-picker"><button className={viewport === "desktop" ? "active" : ""} onClick={() => setViewport("desktop")} aria-label="Desktop preview"><Monitor size={16} /></button><button className={viewport === "tablet" ? "active" : ""} onClick={() => setViewport("tablet")} aria-label="Tablet preview"><Tablet size={16} /></button><button className={viewport === "mobile" ? "active" : ""} onClick={() => setViewport("mobile")} aria-label="Mobile preview"><Smartphone size={16} /></button></div><span>{viewport === "desktop" ? "1440 × 900" : viewport === "tablet" ? "768 × 1024" : "390 × 844"}</span><button onClick={() => setPreviewKey((key) => key + 1)}><RotateCcw size={14} /> Refresh</button></div><div className={`preview-frame preview-frame--${viewport}`}><iframe key={previewKey} title={`Preview of ${spec.brand}`} srcDoc={preview} sandbox="allow-scripts" /></div></div>}
+          {result && activePanel === "strategy" && <div className="report"><p className="eyebrow">{result.plan.concept_name}</p><h2>{result.plan.strategy}</h2><div className="report-grid"><article><span>Audience insight</span><p>{result.plan.audience_insight}</p></article><article><span>Visual direction</span><p>{result.plan.visual_direction}</p></article><article><span>Typography</span><p>{result.plan.typography_direction}</p></article><article><span>Color</span><p>{result.plan.color_direction}</p></article><article><span>Hero concept</span><p>{result.plan.hero_concept}</p></article><article><span>Conversion</span><p>{result.plan.conversion_strategy}</p></article></div></div>}
+          {result && activePanel === "quality" && <div className="report"><div className="score"><strong>{result.quality.score}</strong><span>Production<br />quality score</span></div><p className="muted">Generated with {result.model} · ID {result.generation_id.slice(0, 8)}</p><div className="checks">{Object.entries(result.quality.checks).map(([name, passed]) => <div key={name}><span className={passed ? "pass" : "fail"}>{passed ? <Check size={14} /> : <X size={14} />}</span><span>{name.replaceAll("_", " ")}</span></div>)}</div>{result.quality.warnings.length > 0 && <div className="warnings"><h3>Warnings</h3>{result.quality.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}</div>}
+        </section>
       </div>
-    </TooltipProvider>
-  );
+    </main>
+    <footer className="app-footer"><span>Canvas AI Website Studio</span><span>Strategy · Design · Engineering</span></footer>
+  </div>;
 }
