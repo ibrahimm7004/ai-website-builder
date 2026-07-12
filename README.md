@@ -26,6 +26,20 @@ Canvas turns a short business brief into a considered creative strategy and a po
 - **One-click export** — download the complete website as a ZIP or open it in a dedicated browser tab.
 - **Serverless by design** — generation artifacts are returned directly to the browser; no shared output directory or persistent writable filesystem is required.
 
+## ✺ Generated with Canvas
+
+The example below was generated from a brief for **Afterlight Archive**, a private family-memory service. Canvas developed the editorial direction, wrote the page narrative, created the responsive visual system, and delivered the finished HTML, CSS, and JavaScript.
+
+<p align="center">
+  <img src="docs/images/showcase/afterlight-archive-hero.jpg" width="100%" alt="Afterlight Archive generated website hero with editorial typography and a seasonal family journal composition" />
+</p>
+
+<p align="center">
+  <img src="docs/images/showcase/afterlight-archive-privacy-section.jpg" width="100%" alt="Afterlight Archive generated privacy section using a rich oxblood background and editorial typography" />
+</p>
+
+<p align="center"><sub>One brief, one cohesive art direction — from conversion-focused hero to supporting content.</sub></p>
+
 ## ◈ How it works
 
 ```text
